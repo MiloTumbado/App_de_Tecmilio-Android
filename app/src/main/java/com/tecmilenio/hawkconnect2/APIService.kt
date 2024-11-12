@@ -20,6 +20,16 @@ interface APIService {
 
     @POST("FriendsUI")
     suspend fun saveFriends(@Body saveRequest: SaveFriendsRequest): Response<SaveFriendsResponse>
+
+    @GET("campus.aspx")
+    suspend fun getCampuses(): Response<CampusResponse>
+
+    @POST("posts.aspx/Posts")
+    suspend fun getPosts(@Body filterRequest: PostFilterRequest): Response<PostResponse>
+
+    @POST("posts.aspx/PostsUI")
+    suspend fun createPost(@Body newPostRequest: NewPostRequest): Response<PostResponse>
+
 }
 
 

@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
@@ -24,10 +25,12 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.tecmilenio.hawkconnect2.R
 import com.tecmilenio.hawkconnect2.ui.theme.HawkConnect2Theme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 
@@ -109,6 +112,7 @@ fun MainScreen() {
     var isUserRegistered by remember { mutableStateOf(false) }
     var showDialog by remember { mutableStateOf(false) }
     var showFriendsScreen by remember { mutableStateOf(false) }
+    var showFeedScreen by remember { mutableStateOf(false) }
     var userName by remember { mutableStateOf("") }
     var userLastName by remember { mutableStateOf("") }
     var showConfirmationDialog by remember { mutableStateOf(false) }
@@ -116,7 +120,7 @@ fun MainScreen() {
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         floatingActionButton = {
-            if (!showDialog && !isUserRegistered && !showFriendsScreen) {
+            if (!showDialog && !isUserRegistered && !showFriendsScreen && !showFeedScreen) {
                 FloatingAddButton(onClick = { showDialog = true })
             }
         },
@@ -127,21 +131,28 @@ fun MainScreen() {
                     .padding(innerPadding)
             ) {
                 when {
+                    // Mostrar FeedScreen cuando showFeedScreen es true
+                    showFeedScreen -> {
+                        FeedScreen(
+                            userId = 1, // Reemplaza con el ID de usuario real
+                            onBack = { showFeedScreen = false } // Vuelve a la WelcomeScreen al salir del Feed
+                        )
+                    }
                     // Mostrar FriendsScreen cuando showFriendsScreen es true
                     showFriendsScreen -> {
                         FriendsScreen(
                             userId = 1, // Reemplaza con el ID de usuario real
-                            onSaveFriends = { showFriendsScreen = false }, // Regresar a WelcomeScreen después de guardar
+                            onSaveFriends = { showFriendsScreen = false },
                             onLogOut = {
                                 isUserRegistered = false
                                 userName = ""
                                 userLastName = ""
                                 showFriendsScreen = false
                             },
-                            onNavigateToWelcome = { showFriendsScreen = false } // Navegar a WelcomeScreen
+                            onNavigateToWelcome = { showFriendsScreen = false }
                         )
                     }
-                    // Mostrar WelcomeScreen cuando el usuario está registrado y no está en FriendsScreen
+                    // Mostrar WelcomeScreen cuando el usuario está registrado y no está en FriendsScreen ni FeedScreen
                     isUserRegistered -> {
                         WelcomeScreen(
                             name = userName,
@@ -151,14 +162,20 @@ fun MainScreen() {
                                 userName = ""
                                 userLastName = ""
                             },
-                            onShowFriends = { showFriendsScreen = true }
+                            onShowFriends = { showFriendsScreen = true },
+                            onViewFeed = { showFeedScreen = true } // Maneja la navegación a FeedScreen
                         )
                     }
                     // Mostrar MainContent si el usuario no ha iniciado sesión
                     else -> {
                         MainContent(
                             modifier = Modifier.fillMaxSize(),
-                            onRegisterSuccess = { showDialog = true }
+                            onRegisterSuccess = { showDialog = true },
+                            onLoginSuccess = { name, lastName ->
+                                isUserRegistered = true
+                                userName = name
+                                userLastName = lastName
+                            }
                         )
                     }
                 }
@@ -191,13 +208,13 @@ fun MainScreen() {
 }
 
 
-
-
-
-
 // Composable para el formulario de inicio de sesión
 @Composable
-fun MainContent(modifier: Modifier, onRegisterSuccess: () -> Unit) {
+fun MainContent(
+    modifier: Modifier,
+    onRegisterSuccess: () -> Unit,
+    onLoginSuccess: (String, String) -> Unit // Nueva función que se ejecuta cuando el login es exitoso
+) {
     var correo by remember { mutableStateOf("") }
     var contrasena by remember { mutableStateOf("") }
     var loginResult by remember { mutableStateOf<LoginResult?>(null) }
@@ -211,7 +228,7 @@ fun MainContent(modifier: Modifier, onRegisterSuccess: () -> Unit) {
             .padding(16.dp)
     ) {
         Image(
-            painter = painterResource(id = R.drawable.tecmilenio_logo),
+            painter = painterResource(id = R.drawable.tecmilenio1),
             contentDescription = stringResource(id = R.string.app_name),
             modifier = Modifier
                 .fillMaxWidth()
@@ -225,16 +242,21 @@ fun MainContent(modifier: Modifier, onRegisterSuccess: () -> Unit) {
             modifier = Modifier.align(Alignment.CenterHorizontally)
         )
 
+        // Campos de entrada para el correo y la contraseña
         TextField(value = correo, onValueChange = { correo = it }, label = { Text("Correo electrónico") })
         TextField(value = contrasena, onValueChange = { contrasena = it }, label = { Text("Contraseña") })
 
+        // Botón para iniciar sesión
         Button(
             onClick = {
                 loginUser(correo, contrasena) { result ->
                     if (result?.executeResult == "OK") {
-                        loginResult = result
+                        val user = result.userLogged?.firstOrNull()
+                        if (user != null) {
+                            // Redirige al usuario a la pantalla de bienvenida con nombre y apellido
+                            onLoginSuccess(user.name, user.lastName)
+                        }
                         errorMessage = null
-                        onRegisterSuccess()
                     } else {
                         loginResult = null
                         errorMessage = result?.message ?: "Usuario no válido"
@@ -247,22 +269,6 @@ fun MainContent(modifier: Modifier, onRegisterSuccess: () -> Unit) {
             Text(text = "Entrar", color = Color.White)
         }
 
-        // Mostrar el resultado exitoso del login
-        loginResult?.let { result ->
-            result.userLogged?.firstOrNull()?.let { user ->
-                Text(
-                    text = """
-                        Resultado: OK
-                        Matrícula: ${user.studentNumber}
-                        Nombre: ${user.name} ${user.lastName}
-                        Campus: ${user.campusName}
-                    """.trimIndent(),
-                    color = Color.Green,
-                    modifier = Modifier.padding(top = 16.dp)
-                )
-            }
-        }
-
         // Mostrar mensaje de error si hubo un error en el login
         errorMessage?.let {
             Text(
@@ -273,6 +279,7 @@ fun MainContent(modifier: Modifier, onRegisterSuccess: () -> Unit) {
         }
     }
 }
+
 
 // Composable para el diálogo de confirmación de registro
 @Composable
@@ -302,14 +309,23 @@ fun SignUpDialog(
     var matricula by remember { mutableStateOf("") }
     var contrasena by remember { mutableStateOf("") }
     var expanded by remember { mutableStateOf(false) }
-    var selectedCampus by remember { mutableStateOf<String?>(null) }
+    var selectedCampus by remember { mutableStateOf<Campus?>(null) }
+    var campuses by remember { mutableStateOf<List<Campus>>(emptyList()) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    // Campus hardcodeados
-    val hardcodedCampuses = listOf(
-        Campus(campusID = 1, campusName = "Torres", isActive = true),
-        Campus(campusID = 2, campusName = "Cumbres", isActive = true)
-    )
+    // Cargar los campus
+    LaunchedEffect(Unit) {
+        try {
+            val response = RetrofitInstance.api.getCampuses()
+            if (response.isSuccessful) {
+                campuses = response.body()?.campuses ?: emptyList()
+            } else {
+                errorMessage = "Error al cargar los campus"
+            }
+        } catch (e: Exception) {
+            errorMessage = "Error: ${e.message}"
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -326,7 +342,7 @@ fun SignUpDialog(
             onExpandedChange = { expanded = !expanded }
         ) {
             TextField(
-                value = selectedCampus ?: "Seleccionar Campus (Opcional)",
+                value = selectedCampus?.campusName ?: "Seleccionar Campus",
                 onValueChange = {},
                 readOnly = true,
                 label = { Text("Campus") },
@@ -337,11 +353,11 @@ fun SignUpDialog(
                 expanded = expanded,
                 onDismissRequest = { expanded = false }
             ) {
-                hardcodedCampuses.forEach { item ->
+                campuses.forEach { campus ->
                     DropdownMenuItem(
-                        text = { Text(text = item.campusName) },
+                        text = { Text(text = campus.campusName) },
                         onClick = {
-                            selectedCampus = item.campusName
+                            selectedCampus = campus
                             expanded = false
                         }
                     )
@@ -365,7 +381,7 @@ fun SignUpDialog(
                 Text("Cancelar", color = Color.White)
             }
             TextButton(onClick = {
-                val campusId = hardcodedCampuses.find { it.campusName == selectedCampus }?.campusID ?: 0
+                val campusId = selectedCampus?.campusID ?: 0
                 registerUser(
                     name = nombre,
                     lastName = apellidos,
@@ -391,6 +407,7 @@ fun SignUpDialog(
     }
 }
 
+
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -398,29 +415,48 @@ fun WelcomeScreen(
     name: String,
     lastName: String,
     onLogOut: () -> Unit,
-    onShowFriends: () -> Unit
+    onShowFriends: () -> Unit,
+    onViewFeed: () -> Unit // Nueva función para manejar la navegación a la pantalla de feed
 ) {
     var expanded by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Tec Milenio", color = Color.White) },
+                title = { Text(text = "Tec Milenio", color = Color.White) },
                 colors = TopAppBarDefaults.smallTopAppBarColors(containerColor = Color(0xFF0a301d)),
-                actions = {
+                navigationIcon = {
                     IconButton(onClick = { expanded = true }) {
-                        Icon(Icons.Default.Menu, contentDescription = "Menu", tint = Color.White)
+                        Icon(
+                            imageVector = Icons.Default.Menu,
+                            contentDescription = "Menú de opciones",
+                            tint = Color.White
+                        )
                     }
+                },
+                actions = {
                     DropdownMenu(
                         expanded = expanded,
                         onDismissRequest = { expanded = false }
                     ) {
-                        DropdownMenuItem(text = { Text("View feed") }, onClick = { /* Acción para ver el feed */ })
-                        DropdownMenuItem(text = { Text("My friends") }, onClick = {
-                            expanded = false
-                            onShowFriends()
-                        })
-                        DropdownMenuItem(text = { Text("My info") }, onClick = { /* Acción para My info */ })
+                        DropdownMenuItem(
+                            text = { Text("View feed") },
+                            onClick = {
+                                expanded = false
+                                onViewFeed() // Navegar al feed
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("My friends") },
+                            onClick = {
+                                expanded = false
+                                onShowFriends()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("My info") },
+                            onClick = { /* Acción para My info */ }
+                        )
                         Divider()
                         DropdownMenuItem(
                             text = { Text("Log out") },
@@ -433,14 +469,25 @@ fun WelcomeScreen(
                 }
             )
         },
-        content = { /* Resto del contenido */ }
+        content = { innerPadding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFFD9F2D0))
+                    .padding(innerPadding),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(text = "Hola", fontSize = 24.sp, color = Color.Black)
+                    Text(text = "$name $lastName", fontSize = 20.sp, color = Color.Black)
+                }
+            }
+        }
     )
 }
-
-
-
-
-
 // Botón flotante para abrir el diálogo de registro
 @Composable
 fun FloatingAddButton(onClick: () -> Unit) {
@@ -669,5 +716,173 @@ private fun saveFriends(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun FeedScreen(
+    userId: Int,
+    onBack: () -> Unit
+) {
+    var posts by remember { mutableStateOf<List<Post>>(emptyList()) }
+    var showCreatePostDialog by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    // Función para cargar publicaciones
+    // Modifica la función de carga de publicaciones en FeedScreen
+    fun loadPosts() {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val response = RetrofitInstance.api.getPosts(PostFilterRequest(PostFilter(userId)))
+                if (response.isSuccessful) {
+                    posts = response.body()?.data?.posts ?: emptyList()
+                } else {
+                    withContext(Dispatchers.Main) {
+                        errorMessage = "Error al cargar publicaciones: ${response.code()}"
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    errorMessage = "Excepción: ${e.message}" // Mostrar mensaje de error en UI
+                }
+            }
+        }
+    }
 
 
+    // Cargar publicaciones al iniciar la pantalla
+    LaunchedEffect(Unit) {
+        loadPosts()
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Tec Milenio - FEED", color = Color.White) },
+                colors = TopAppBarDefaults.smallTopAppBarColors(containerColor = Color(0xFF0a301d)),
+                navigationIcon = {
+                    IconButton(onClick = { onBack() }) {
+                        Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Volver", tint = Color.White)
+                    }
+                }
+            )
+        },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = { showCreatePostDialog = true },
+                containerColor = Color(0xFF0a301d),
+                contentColor = Color.White
+            ) {
+                Text("+", fontSize = 24.sp)
+            }
+        },
+        content = { innerPadding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .background(Color(0xFFD9F2D0))
+            ) {
+                if (posts.isEmpty()) {
+                    Text("No hay publicaciones", modifier = Modifier.align(Alignment.Center))
+                } else {
+                    LazyColumn {
+                        items(posts) { post ->
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                elevation = CardDefaults.cardElevation(4.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Text(text = post.completeName, style = MaterialTheme.typography.titleMedium)
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(text = post.content)
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(text = "${post.campusName} - ${post.timeStamp}", style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                errorMessage?.let {
+                    Text(text = it, color = Color.Red, modifier = Modifier.padding(16.dp))
+                }
+            }
+        }
+    )
+
+    if (showCreatePostDialog) {
+        CreatePostDialog(
+            userId = userId,
+            onDismiss = { showCreatePostDialog = false },
+            onPostCreated = {
+                showCreatePostDialog = false
+                loadPosts() // Recargar publicaciones después de crear una nueva
+            }
+        )
+    }
+}
+@Composable
+fun CreatePostDialog(
+    userId: Int,
+    onDismiss: () -> Unit,
+    onPostCreated: () -> Unit // Ya no es una función @Composable
+) {
+    var postContent by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var postCreated by remember { mutableStateOf(false) }
+
+    // Manejar la acción de creación de la publicación
+    if (postCreated) {
+        LaunchedEffect(Unit) {
+            onPostCreated() // Llamada desde un contexto @Composable
+            postCreated = false // Reiniciar la bandera para evitar múltiples llamadas
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("New post") },
+        text = {
+            Column {
+                TextField(
+                    value = postContent,
+                    onValueChange = { postContent = it },
+                    label = { Text("Hola amigos..") }
+                )
+                errorMessage?.let {
+                    Text(text = it, color = Color.Red)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                if (postContent.isNotBlank()) {
+                    CoroutineScope(Dispatchers.IO).launch {
+                        try {
+                            val response = RetrofitInstance.api.createPost(
+                                NewPostRequest(NewPost(userId, postContent))
+                            )
+                            if (response.isSuccessful && response.body()?.data?.executeResult == "OK") {
+                                postCreated = true // Marcar que la publicación fue creada
+                            } else {
+                                errorMessage = "Error al crear publicación"
+                            }
+                        } catch (e: Exception) {
+                            errorMessage = "Error: ${e.message}"
+                        }
+                    }
+                } else {
+                    errorMessage = "El contenido no puede estar vacío"
+                }
+            }) {
+                Text("Create")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}

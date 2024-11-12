@@ -8,7 +8,7 @@ data class Campus(
     @SerializedName("IsActive") val isActive: Boolean
 )
 
-data class  Campuses(
+data class CampusResponse(
     @SerializedName("Campuses") val campuses: List<Campus>
 )
 
@@ -85,5 +85,41 @@ data class SaveFriendsResponse(
 
 data class SaveFriendData(
     @SerializedName("ExecuteResult") val executeResult: String,
+    @SerializedName("Message") val message: String
+)
+
+data class PostFilterRequest(
+    @SerializedName("PostFilter") val postFilter: PostFilter
+)
+
+data class PostFilter(
+    @SerializedName("LoggedUserID") val loggedUserID: Int
+)
+
+data class PostResponse(
+    @SerializedName("d") val data: PostData
+)
+
+data class PostData(
+    @SerializedName("ExecuteResult") val executeResult: String,
+    @SerializedName("Message") val message: String?,
+    @SerializedName("Friends") val posts: List<Post>?
+)
+
+data class Post(
+    @SerializedName("PostID") val postID: Int,
+    @SerializedName("UserId") val userId: Int,
+    @SerializedName("CompleteName") val completeName: String,
+    @SerializedName("Content") val content: String,
+    @SerializedName("CampusName") val campusName: String,
+    @SerializedName("TimeStamp") val timeStamp: String
+)
+
+data class NewPostRequest(
+    @SerializedName("Post") val post: NewPost
+)
+
+data class NewPost(
+    @SerializedName("LoggedUserID") val loggedUserID: Int,
     @SerializedName("Message") val message: String
 )
