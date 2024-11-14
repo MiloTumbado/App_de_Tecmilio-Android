@@ -12,3 +12,4 @@ object RetrofitInstance {
             .create(APIService::class.java)
     }
 }
+

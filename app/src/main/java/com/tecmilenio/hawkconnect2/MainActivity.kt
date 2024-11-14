@@ -15,7 +15,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,7 +24,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.tecmilenio.hawkconnect2.R
 import com.tecmilenio.hawkconnect2.ui.theme.HawkConnect2Theme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -33,6 +31,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -508,155 +507,103 @@ fun FloatingAddButton(onClick: () -> Unit) {
 fun FriendsScreen(
     userId: Int,
     onSaveFriends: () -> Unit,
-    onLogOut: () -> Unit, // Nueva función para manejar el log out
-    onNavigateToWelcome: () -> Unit // Función para navegar de regreso a la pantalla de bienvenida
+    onLogOut: () -> Unit, // Asegúrate de definir este parámetro
+    onNavigateToWelcome: () -> Unit // Asegúrate de definir este parámetro si se usa
 ) {
-    var campusFilter by remember { mutableStateOf("") }
-    var nameFilter by remember { mutableStateOf("") }
-    var friendsList by remember { mutableStateOf<List<Friend>>(emptyList()) }
-    var selectedFriends by remember { mutableStateOf<Set<Int>>(emptySet()) }
+    var friends by remember { mutableStateOf<List<User>>(emptyList()) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    var expanded by remember { mutableStateOf(false) } // Estado del menú desplegable de la barra de herramientas
+
+    // Función para cargar amigos
+    fun loadFriends() {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val response = RetrofitInstance.api.getFriends(FriendsFilterRequest(userId))
+                if (response.isSuccessful) {
+                    friends = (response.body()?.data?.friends ?: emptyList()) as List<User>
+                } else {
+                    withContext(Dispatchers.Main) {
+                        errorMessage = "Error al cargar amigos: ${response.code()}"
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    errorMessage = "Excepción: ${e.message}"
+                }
+            }
+        }
+    }
+
+    // Cargar amigos al iniciar la pantalla
+    LaunchedEffect(Unit) {
+        loadFriends()
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Tec Milenio", color = Color.White) },
+                title = { Text("Tec Milenio - Friends", color = Color.White) },
                 colors = TopAppBarDefaults.smallTopAppBarColors(containerColor = Color(0xFF0a301d)),
                 navigationIcon = {
-                    IconButton(onClick = { expanded = true }) {
-                        Icon(imageVector = Icons.Default.Menu, contentDescription = "Menú de opciones", tint = Color.White)
-                    }
-                },
-                actions = {
-                    DropdownMenu(
-                        expanded = expanded,
-                        onDismissRequest = { expanded = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("View feed") },
-                            onClick = { /* Acción para ver el feed */ }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("My friends") },
-                            onClick = {
-                                expanded = false
-                                // Estamos en "My friends", por lo que no hacemos nada aquí
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("My info") },
-                            onClick = { /* Acción para My info */ }
-                        )
-                        Divider()
-                        DropdownMenuItem(
-                            text = { Text("Log out") },
-                            onClick = {
-                                expanded = false
-                                onLogOut()
-                            }
-                        )
+                    IconButton(onClick = { onBack() }) {
+                        Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Volver", tint = Color.White)
                     }
                 }
             )
         },
         content = { innerPadding ->
-            Column(
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
-                    .padding(16.dp)
-                    .background(Color(0xFFD9F2D0))
+                    .background(Color(0xFFD9F2D0)) // Ajusta el color del fondo según sea necesario
             ) {
-                Text("MY FRIENDS", fontSize = 24.sp, color = Color.Black)
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Campo de texto para filtrar por campus
-                TextField(
-                    value = campusFilter,
-                    onValueChange = { campusFilter = it },
-                    label = { Text("Campus") },
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
-                )
-
-                // Campo de texto para filtrar por nombre
-                TextField(
-                    value = nameFilter,
-                    onValueChange = { nameFilter = it },
-                    label = { Text("Name") },
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
-                )
-
-                // Botón de búsqueda
-                Button(
-                    onClick = {
-                        loadFriends(userId, campusFilter, nameFilter) { result, error ->
-                            friendsList = result ?: emptyList()
-                            errorMessage = error
-                        }
-                    },
-                    modifier = Modifier.align(Alignment.End)
-                ) {
-                    Text("Buscar")
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Text("Amigos ${selectedFriends.size} de ${friendsList.size}")
-
-                // Lista de amigos
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    items(friendsList) { friend ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Checkbox(
-                                checked = selectedFriends.contains(friend.userId),
-                                onCheckedChange = { checked ->
-                                    if (checked) {
-                                        selectedFriends = selectedFriends + friend.userId
-                                    } else {
-                                        selectedFriends = selectedFriends - friend.userId
-                                    }
+                if (friends.isEmpty()) {
+                    Text(
+                        text = "No hay amigos",
+                        modifier = Modifier.align(Alignment.Center),
+                        color = Color.Black
+                    )
+                } else {
+                    LazyColumn {
+                        items(friends) { friend ->
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                elevation = CardDefaults.cardElevation(4.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Text(
+                                        text = friend.name,
+                                        style = MaterialTheme.typography.titleMedium
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "Matrícula: ${friend.studentNumber}",
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "Campus: ${friend.campusName}",
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
                                 }
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("${friend.completeName}\nStudent ID: ${friend.studentNumber}\nCampus: ${friend.campusName}")
+                            }
                         }
                     }
                 }
 
-                // Botón para guardar la selección de amigos
-                Button(
-                    onClick = {
-                        saveFriends(userId, selectedFriends) { success, error ->
-                            if (success) {
-                                onSaveFriends()
-                            } else {
-                                errorMessage = error
-                            }
-                        }
-                    },
-                    modifier = Modifier
-                        .align(Alignment.End)
-                        .padding(top = 16.dp)
-                ) {
-                    Text("Guardar")
-                }
-
-                // Mensaje de error
                 errorMessage?.let {
-                    Text("Error: $it", color = Color.Red, modifier = Modifier.padding(top = 16.dp))
+                    Text(
+                        text = it,
+                        color = Color.Red,
+                        modifier = Modifier.padding(16.dp)
+                    )
                 }
             }
         }
     )
 }
-
-
 // Función para cargar amigos desde la API
 private fun loadFriends(
     userId: Int,
@@ -716,6 +663,7 @@ private fun saveFriends(
     }
 }
 
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FeedScreen(
@@ -725,15 +673,17 @@ fun FeedScreen(
     var posts by remember { mutableStateOf<List<Post>>(emptyList()) }
     var showCreatePostDialog by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    val coroutineScope = rememberCoroutineScope()
 
     // Función para cargar publicaciones
-    // Modifica la función de carga de publicaciones en FeedScreen
     fun loadPosts() {
-        CoroutineScope(Dispatchers.IO).launch {
+        coroutineScope.launch {
             try {
                 val response = RetrofitInstance.api.getPosts(PostFilterRequest(PostFilter(userId)))
                 if (response.isSuccessful) {
-                    posts = response.body()?.data?.posts ?: emptyList()
+                    val responseBody = response.body()
+                    val postsList = responseBody?.data?.posts
+                    posts = postsList ?: emptyList() // Maneja la lista de posts
                 } else {
                     withContext(Dispatchers.Main) {
                         errorMessage = "Error al cargar publicaciones: ${response.code()}"
@@ -741,15 +691,14 @@ fun FeedScreen(
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    errorMessage = "Excepción: ${e.message}" // Mostrar mensaje de error en UI
+                    errorMessage = "Excepción: ${e.message}"
                 }
             }
         }
     }
 
 
-    // Cargar publicaciones al iniciar la pantalla
-    LaunchedEffect(Unit) {
+    LaunchedEffect(userId) {
         loadPosts()
     }
 
@@ -793,11 +742,11 @@ fun FeedScreen(
                                 elevation = CardDefaults.cardElevation(4.dp)
                             ) {
                                 Column(modifier = Modifier.padding(16.dp)) {
-                                    Text(text = post.completeName, style = MaterialTheme.typography.titleMedium)
+                                    Text(text = post.completeName ?: "Nombre desconocido", style = MaterialTheme.typography.titleMedium)
                                     Spacer(modifier = Modifier.height(4.dp))
-                                    Text(text = post.content)
+                                    Text(text = post.content ?: "Contenido no disponible")
                                     Spacer(modifier = Modifier.height(8.dp))
-                                    Text(text = "${post.campusName} - ${post.timeStamp}", style = MaterialTheme.typography.bodySmall)
+                                    Text(text = "${post.campusName ?: "Campus desconocido"} - ${post.timeStamp ?: ""}", style = MaterialTheme.typography.bodySmall)
                                 }
                             }
                         }
@@ -817,28 +766,21 @@ fun FeedScreen(
             onDismiss = { showCreatePostDialog = false },
             onPostCreated = {
                 showCreatePostDialog = false
-                loadPosts() // Recargar publicaciones después de crear una nueva
+                loadPosts()
             }
         )
     }
 }
+
+
 @Composable
 fun CreatePostDialog(
     userId: Int,
     onDismiss: () -> Unit,
-    onPostCreated: () -> Unit // Ya no es una función @Composable
+    onPostCreated: () -> Unit
 ) {
     var postContent by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    var postCreated by remember { mutableStateOf(false) }
-
-    // Manejar la acción de creación de la publicación
-    if (postCreated) {
-        LaunchedEffect(Unit) {
-            onPostCreated() // Llamada desde un contexto @Composable
-            postCreated = false // Reiniciar la bandera para evitar múltiples llamadas
-        }
-    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -848,7 +790,7 @@ fun CreatePostDialog(
                 TextField(
                     value = postContent,
                     onValueChange = { postContent = it },
-                    label = { Text("Hola amigos..") }
+                    label = { Text("Escribe algo...") }
                 )
                 errorMessage?.let {
                     Text(text = it, color = Color.Red)
@@ -858,18 +800,23 @@ fun CreatePostDialog(
         confirmButton = {
             TextButton(onClick = {
                 if (postContent.isNotBlank()) {
+                    // Aquí se hace la llamada para crear el post
                     CoroutineScope(Dispatchers.IO).launch {
                         try {
-                            val response = RetrofitInstance.api.createPost(
-                                NewPostRequest(NewPost(userId, postContent))
-                            )
-                            if (response.isSuccessful && response.body()?.data?.executeResult == "OK") {
-                                postCreated = true // Marcar que la publicación fue creada
-                            } else {
-                                errorMessage = "Error al crear publicación"
+                            val request = NewPostRequest(userId = userId, message = postContent)
+                            val response = RetrofitInstance.api.createPost(request)
+
+                            withContext(Dispatchers.Main) {
+                                if (response.isSuccessful && response.body()?.data?.executeResult == "OK") {
+                                    onPostCreated() // Llama a la función de éxito
+                                } else {
+                                    errorMessage = "Error de respuesta: ${response.code()} - ${response.errorBody()?.string()}"
+                                }
                             }
                         } catch (e: Exception) {
-                            errorMessage = "Error: ${e.message}"
+                            withContext(Dispatchers.Main) {
+                                errorMessage = "Excepción: ${e.message}"
+                            }
                         }
                     }
                 } else {
