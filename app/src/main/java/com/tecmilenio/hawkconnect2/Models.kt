@@ -2,6 +2,7 @@ package com.tecmilenio.hawkconnect2
 
 import com.google.gson.annotations.SerializedName
 
+// Login Models
 
 data class LoginRequest(
     @SerializedName("LoginData") val loginData: LoginData
@@ -12,7 +13,7 @@ data class LoginData(
     @SerializedName("Password") val password: String
 )
 
-data class  LoginResponse(
+data class LoginResponse(
     @SerializedName("d") val data: LoginResult
 )
 
@@ -32,19 +33,22 @@ data class User(
     @SerializedName("CampusName") val campusName: String
 )
 
+// Campus Models
+
+data class CampusResponse(
+    @SerializedName("Campuses") val campuses: List<Campus>
+)
+
 data class Campus(
     @SerializedName("CampusID") val campusID: Int,
     @SerializedName("CampusName") val campusName: String,
     @SerializedName("IsActive") val isActive: Boolean
 )
 
-data class CampusResponse(
-    @SerializedName("Campuses") val campuses: List<Campus>
-)
-
+// Register Models
 
 data class RegisterRequest(
-    @SerializedName("NewUser") val newUser: NewUser
+    @SerializedName("datos") val datos: NewUser
 )
 
 data class NewUser(
@@ -53,7 +57,7 @@ data class NewUser(
     @SerializedName("Email") val email: String,
     @SerializedName("Password") val password: String,
     @SerializedName("StudentNumber") val studentNumber: String,
-    @SerializedName("CampusID") val campusId: Int? = null // Hacer que CampusID sea opcional
+    @SerializedName("CampusID") val campusId: Int
 )
 
 
@@ -63,16 +67,20 @@ data class RegisterResponse(
 
 data class RegisterResult(
     @SerializedName("ExecuteResult") val executeResult: String,
-    @SerializedName("Message") val message: String
+    @SerializedName("Message") val message: String? = null
 )
 
-
-// Models.kt
+// Friend Models
 
 data class FriendFilterRequest(
     @SerializedName("FriendsFilter") val friendsFilter: FriendsFilter
 )
 
+data class FriendsFilter(
+    @SerializedName("LoggedUserID") val loggedUserId: Int,
+    @SerializedName("CampusID") val campusId: Int,
+    @SerializedName("Name") val name: String? = null
+)
 
 data class FriendResponse(
     @SerializedName("d") val data: FriendData
@@ -94,24 +102,15 @@ data class Friend(
     @SerializedName("IsFriend") val isFriend: Boolean
 )
 
-// Request to save the list of friends
+// Save Friends Models
+
 data class SaveFriendsRequest(
     @SerializedName("FriendsList") val friendsList: FriendsList
 )
 
 data class FriendsList(
     @SerializedName("LoggedUserID") val loggedUserId: Int,
-    @SerializedName("Friends") val friends: String // comma-separated list of friend IDs
-)
-
-data class FriendsFilterRequest(
-    @SerializedName("FriendsFilter") val filter: Int
-)
-
-data class FriendsFilter(
-    @SerializedName("LoggedUserID") val loggedUserId: Int,
-    @SerializedName("CampusID") val campusId: Int,
-    @SerializedName("Name") val name: String? = null
+    @SerializedName("Friends") val friends: String // Lista de IDs de amigos separados por comas
 )
 
 data class SaveFriendsResponse(
@@ -123,20 +122,15 @@ data class SaveFriendData(
     @SerializedName("Message") val message: String
 )
 
+// Post Filter Models
+
 data class PostFilterRequest(
     @SerializedName("PostFilter") val postFilter: PostFilter
 )
 
 data class PostFilter(
-    @SerializedName("LoggedUserID") val loggedUserID: Int
+    @SerializedName("LoggedUserID") val userId: Int
 )
-
-data class PostData(
-    @SerializedName("ExecuteResult") val executeResult: String,
-    @SerializedName("Message") val message: String?,
-    @SerializedName("Posts") val posts: List<Post>? // Cambia "Friends" por "Posts"
-)
-
 
 data class PostResponse(
     @SerializedName("d") val data: PostResult
@@ -145,21 +139,36 @@ data class PostResponse(
 data class PostResult(
     @SerializedName("ExecuteResult") val executeResult: String,
     @SerializedName("Message") val message: String,
-    @SerializedName("Posts") val posts: List<Post>
+    @SerializedName("Posts") val posts: List<Post>?
 )
 
 data class Post(
     @SerializedName("PostID") val postId: Int,
-    @SerializedName("UserId") val userId: Int,
+    @SerializedName("UserID") val userId: Int,
     @SerializedName("CompleteName") val completeName: String,
     @SerializedName("CampusID") val campusId: Int,
     @SerializedName("CampusName") val campusName: String,
     @SerializedName("TimeStamp") val timeStamp: String,
-    @SerializedName("Content") val content: String // Agregar esta línea si content es necesario
+    @SerializedName("Content") val content: String
 )
 
+// New Post Models
 
 data class NewPostRequest(
+    @SerializedName("Post") val post: PostData
+)
+
+data class PostData(
     @SerializedName("LoggedUserID") val userId: Int,
+    @SerializedName("Message") val message: String,
+    @SerializedName("OperationType") val operationType: String = "CREATE"
+)
+
+data class NewPostResponse(
+    @SerializedName("d") val data: ExecuteResult
+)
+
+data class ExecuteResult(
+    @SerializedName("ExecuteResult") val executeResult: String,
     @SerializedName("Message") val message: String
 )

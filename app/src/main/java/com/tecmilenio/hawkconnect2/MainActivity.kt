@@ -32,7 +32,6 @@ import kotlinx.coroutines.withContext
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 
-
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -60,61 +59,98 @@ private fun registerUser(
     lastName: String,
     email: String,
     password: String,
-    studentNumber: String,
+    studentNumber: String, // Cambiado a String
     campusId: Int?,
     onResult: (RegisterResult?) -> Unit
 ) {
     CoroutineScope(Dispatchers.IO).launch {
         try {
             val registerRequest = RegisterRequest(
-                NewUser(name, lastName, email, password, studentNumber, campusId ?: 0)
+                datos = NewUser(
+                    name = name,
+                    lastName = lastName,
+                    email = email,
+                    password = password,
+                    studentNumber = studentNumber, // Ahora es String
+                    campusId = campusId ?: 0
+                )
             )
-            val call = getRetrofitHack().create(APIService::class.java).registerUser(registerRequest)
-            if (call.isSuccessful) {
-                println("Registro exitoso, respuesta: ${call.body()}")
-                onResult(call.body()?.data)
+            println("Enviando solicitud de registro: $registerRequest")
+            val response = RetrofitInstance.api.registerUser(registerRequest)
+            if (response.isSuccessful) {
+                println("Registro exitoso, respuesta: ${response.body()}")
+                withContext(Dispatchers.Main) {
+                    onResult(response.body()?.data)
+                }
             } else {
-                val errorBody = call.errorBody()?.string()
-                println("Error en el registro, código de error: ${call.code()}")
+                val errorBody = response.errorBody()?.string()
+                println("Error en el registro, código de error: ${response.code()}")
                 println("Mensaje de error: $errorBody")
-                onResult(null)
+                withContext(Dispatchers.Main) {
+                    onResult(null)
+                }
             }
         } catch (e: Exception) {
             println("Excepción en el registro: ${e.message}")
-            onResult(null)
+            withContext(Dispatchers.Main) {
+                onResult(null)
+            }
         }
     }
 }
+
 
 // Función para manejar el login de usuario
 private fun loginUser(correo: String, contrasena: String, onResult: (LoginResult?) -> Unit) {
     CoroutineScope(Dispatchers.IO).launch {
         try {
             val loginRequest = LoginRequest(LoginData(correo, contrasena))
-            val call = getRetrofitHack().create(APIService::class.java).loginUser(loginRequest)
-            if (call.isSuccessful) {
-                val response = call.body()
-                onResult(response?.data)
+            val response = RetrofitInstance.api.loginUser(loginRequest)
+            if (response.isSuccessful) {
+                val responseBody = response.body()
+                println("Respuesta de la API de login: $responseBody") // Agrega esta línea
+                if (responseBody?.data?.executeResult == "OK") {
+                    withContext(Dispatchers.Main) {
+                        onResult(responseBody.data)
+                    }
+                } else {
+                    println("Error de login: ${responseBody?.data?.message ?: "Respuesta no válida"}")
+                    withContext(Dispatchers.Main) {
+                        onResult(null)
+                    }
+                }
             } else {
-                onResult(null)
+                val errorBody = response.errorBody()?.string()
+                println("Error en la solicitud de login, código de error: ${response.code()}")
+                println("Mensaje de error: $errorBody")
+                withContext(Dispatchers.Main) {
+                    onResult(null)
+                }
             }
         } catch (e: Exception) {
-            onResult(null)
+            println("Excepción durante el login: ${e.message}")
+            withContext(Dispatchers.Main) {
+                onResult(null)
+            }
         }
     }
 }
 
-// Composable principal de la pantalla
+// Composable principal
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen() {
     var isUserRegistered by remember { mutableStateOf(false) }
+    var userId by remember { mutableStateOf<Int?>(null) }
     var showDialog by remember { mutableStateOf(false) }
     var showFriendsScreen by remember { mutableStateOf(false) }
     var showFeedScreen by remember { mutableStateOf(false) }
+    var showViewPostsScreen by remember { mutableStateOf(false) }
+    var showConfirmationDialog by remember { mutableStateOf(false) }
+    var selectedFriendIds by remember { mutableStateOf<List<Int>>(emptyList()) }
     var userName by remember { mutableStateOf("") }
     var userLastName by remember { mutableStateOf("") }
-    var showConfirmationDialog by remember { mutableStateOf(false) }
+    // Agrega otras variables necesarias, como el userId obtenido después del login
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -130,28 +166,45 @@ fun MainScreen() {
                     .padding(innerPadding)
             ) {
                 when {
-                    // Mostrar FeedScreen cuando showFeedScreen es true
+                    showViewPostsScreen -> {
+                        ViewPostsScreen(
+                            friendIds = selectedFriendIds,
+                            onBack = { showViewPostsScreen = false }
+                        )
+                    }
                     showFeedScreen -> {
-                        FeedScreen(
-                            userId = 1, // Reemplaza con el ID de usuario real
-                            onBack = { showFeedScreen = false } // Vuelve a la WelcomeScreen al salir del Feed
-                        )
+                        userId?.let { id ->
+                            FeedScreen(
+                                userId = id, // Usa 'id' aquí
+                                onBack = { showFeedScreen = false }
+                            )
+                        } ?: run {
+                            // Manejar el caso cuando userId es null
+                            println("Error: userId es null. Por favor, inicia sesión nuevamente.")
+                            isUserRegistered = false
+                            showFeedScreen = false
+                        }
                     }
-                    // Mostrar FriendsScreen cuando showFriendsScreen es true
+
+
                     showFriendsScreen -> {
-                        FriendsScreen(
-                            userId = 1, // Reemplaza con el ID de usuario real
-                            onSaveFriends = { showFriendsScreen = false },
-                            onLogOut = {
-                                isUserRegistered = false
-                                userName = ""
-                                userLastName = ""
-                                showFriendsScreen = false
-                            },
-                            onNavigateToWelcome = { showFriendsScreen = false }
-                        )
+                        userId?.let { id ->
+                            println("Navegando a FriendsScreen con userId: $id")
+                            FriendsScreen(
+                                userId = id,
+                                onBack = { showFriendsScreen = false },
+                                onViewPosts = { friendIds ->
+                                    selectedFriendIds = friendIds
+                                    showViewPostsScreen = true
+                                }
+                            )
+                        } ?: run {
+                            println("Error: userId es null. Por favor, inicia sesión nuevamente.")
+                            isUserRegistered = false
+                            showFriendsScreen = false
+                        }
                     }
-                    // Mostrar WelcomeScreen cuando el usuario está registrado y no está en FriendsScreen ni FeedScreen
+
                     isUserRegistered -> {
                         WelcomeScreen(
                             name = userName,
@@ -160,26 +213,31 @@ fun MainScreen() {
                                 isUserRegistered = false
                                 userName = ""
                                 userLastName = ""
+                                userId = null // Restablecer userId al cerrar sesión
                             },
                             onShowFriends = { showFriendsScreen = true },
-                            onViewFeed = { showFeedScreen = true } // Maneja la navegación a FeedScreen
+                            onViewFeed = { showFeedScreen = true }
                         )
                     }
-                    // Mostrar MainContent si el usuario no ha iniciado sesión
                     else -> {
+
                         MainContent(
                             modifier = Modifier.fillMaxSize(),
                             onRegisterSuccess = { showDialog = true },
-                            onLoginSuccess = { name, lastName ->
+                            onLoginSuccess = { id, name, lastName ->
                                 isUserRegistered = true
                                 userName = name
                                 userLastName = lastName
+                                userId = id // Almacena el userId
+                                println("userId almacenado en MainScreen: $userId")
                             }
+
                         )
+
                     }
                 }
 
-                // Diálogo de registro
+                // Manejo de diálogos de registro y confirmación
                 if (showDialog) {
                     SignUpDialog(
                         onDismiss = { showDialog = false },
@@ -192,7 +250,6 @@ fun MainScreen() {
                     )
                 }
 
-                // Diálogo de confirmación de registro exitoso
                 if (showConfirmationDialog) {
                     ConfirmationDialog(
                         onDismiss = {
@@ -207,12 +264,25 @@ fun MainScreen() {
 }
 
 
+// Botón flotante
+@Composable
+fun FloatingAddButton(onClick: () -> Unit) {
+    FloatingActionButton(
+        onClick = onClick,
+        containerColor = Color(0xFF0a301d),
+        contentColor = Color.White,
+        modifier = Modifier.padding(16.dp)
+    ) {
+        Text("+", fontSize = 24.sp)
+    }
+}
+
 // Composable para el formulario de inicio de sesión
 @Composable
 fun MainContent(
     modifier: Modifier,
     onRegisterSuccess: () -> Unit,
-    onLoginSuccess: (String, String) -> Unit // Nueva función que se ejecuta cuando el login es exitoso
+    onLoginSuccess: (Int, String, String) -> Unit
 ) {
     var correo by remember { mutableStateOf("") }
     var contrasena by remember { mutableStateOf("") }
@@ -253,7 +323,9 @@ fun MainContent(
                         val user = result.userLogged?.firstOrNull()
                         if (user != null) {
                             // Redirige al usuario a la pantalla de bienvenida con nombre y apellido
-                            onLoginSuccess(user.name, user.lastName)
+                            onLoginSuccess(user.userId, user.name, user.lastName)
+                            println("Inicio de sesión exitoso. userId: ${user.userId}")
+
                         }
                         errorMessage = null
                     } else {
@@ -263,7 +335,9 @@ fun MainContent(
                 }
             },
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0a301d)),
-            modifier = Modifier.fillMaxWidth().padding(top = 30.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 30.dp)
         ) {
             Text(text = "Entrar", color = Color.White)
         }
@@ -276,9 +350,17 @@ fun MainContent(
                 modifier = Modifier.padding(top = 16.dp)
             )
         }
+        // Al final de MainContent, antes de cerrar la columna
+        Spacer(modifier = Modifier.height(16.dp))
+        TextButton(
+            onClick = { onRegisterSuccess() },
+            modifier = Modifier.align(Alignment.CenterHorizontally)
+        ) {
+            Text(text = "¿No tienes una cuenta? Regístrate aquí")
+        }
+
     }
 }
-
 
 // Composable para el diálogo de confirmación de registro
 @Composable
@@ -315,16 +397,17 @@ fun SignUpDialog(
     // Cargar los campus
     LaunchedEffect(Unit) {
         try {
-            val response = RetrofitInstance.api.getCampuses()
-            if (response.isSuccessful) {
-                campuses = response.body()?.campuses ?: emptyList()
+            val campusResponse = RetrofitInstance.api.getCampuses()
+            if (campusResponse.isSuccessful) {
+                campuses = campusResponse.body()?.campuses ?: emptyList()
             } else {
-                errorMessage = "Error al cargar los campus"
+                errorMessage = "Error al cargar campus: ${campusResponse.code()}"
             }
         } catch (e: Exception) {
             errorMessage = "Error: ${e.message}"
         }
     }
+
 
     Column(
         modifier = Modifier
@@ -346,7 +429,10 @@ fun SignUpDialog(
                 readOnly = true,
                 label = { Text("Campus") },
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                modifier = Modifier.menuAnchor().fillMaxWidth().padding(bottom = 8.dp)
+                modifier = Modifier
+                    .menuAnchor()
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp)
             )
             ExposedDropdownMenu(
                 expanded = expanded,
@@ -376,17 +462,19 @@ fun SignUpDialog(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            TextButton(onClick = onDismiss) {
-                Text("Cancelar", color = Color.White)
-            }
             TextButton(onClick = {
                 val campusId = selectedCampus?.campusID ?: 0
+                val studentNumber = matricula // Ahora es String
+                if (studentNumber.isBlank()) {
+                    errorMessage = "El número de matrícula no puede estar vacío"
+                    return@TextButton
+                }
                 registerUser(
                     name = nombre,
                     lastName = apellidos,
                     email = email,
                     password = contrasena,
-                    studentNumber = matricula,
+                    studentNumber = studentNumber, // Pasamos la String
                     campusId = campusId
                 ) { result ->
                     if (result?.executeResult == "OK") {
@@ -398,6 +486,7 @@ fun SignUpDialog(
             }) {
                 Text("Crear", color = Color.White)
             }
+
         }
 
         errorMessage?.let {
@@ -405,7 +494,6 @@ fun SignUpDialog(
         }
     }
 }
-
 
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 @OptIn(ExperimentalMaterial3Api::class)
@@ -415,7 +503,7 @@ fun WelcomeScreen(
     lastName: String,
     onLogOut: () -> Unit,
     onShowFriends: () -> Unit,
-    onViewFeed: () -> Unit // Nueva función para manejar la navegación a la pantalla de feed
+    onViewFeed: () -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
 
@@ -432,17 +520,18 @@ fun WelcomeScreen(
                             tint = Color.White
                         )
                     }
-                },
-                actions = {
+
+                    // Asociar el DropdownMenu directamente con el IconButton
                     DropdownMenu(
                         expanded = expanded,
-                        onDismissRequest = { expanded = false }
+                        onDismissRequest = { expanded = false },
+                        modifier = Modifier.background(Color.White)
                     ) {
                         DropdownMenuItem(
                             text = { Text("View feed") },
                             onClick = {
                                 expanded = false
-                                onViewFeed() // Navegar al feed
+                                onViewFeed()
                             }
                         )
                         DropdownMenuItem(
@@ -487,85 +576,332 @@ fun WelcomeScreen(
         }
     )
 }
-// Botón flotante para abrir el diálogo de registro
-@Composable
-fun FloatingAddButton(onClick: () -> Unit) {
-    FloatingActionButton(
-        onClick = onClick,
-        containerColor = Color(0xFF0a301d),
-        contentColor = Color.White,
-        modifier = Modifier.padding(16.dp)
-    ) {
-        Text("+", fontSize = 24.sp)
-    }
-}
-
-// FriendsScreen.kt
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FriendsScreen(
     userId: Int,
-    onSaveFriends: () -> Unit,
-    onLogOut: () -> Unit, // Asegúrate de definir este parámetro
-    onNavigateToWelcome: () -> Unit // Asegúrate de definir este parámetro si se usa
+    onBack: () -> Unit,
+    onViewPosts: (List<Int>) -> Unit
 ) {
-    var friends by remember { mutableStateOf<List<User>>(emptyList()) }
+    println("FriendsScreen iniciado con userId: $userId")
+    // Variables de estado
+    var friends by remember { mutableStateOf<List<Friend>>(emptyList()) }
+    var campuses by remember { mutableStateOf<List<Campus>>(emptyList()) }
+    var selectedCampus by remember { mutableStateOf<Campus?>(null) }
+    var nameFilter by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var selectedFriends by remember { mutableStateOf(setOf<Int>()) }
+    var expanded by remember { mutableStateOf(false) }
+    var showSuccessDialog by remember { mutableStateOf(false) }
 
-    // Función para cargar amigos
-    fun loadFriends() {
-        CoroutineScope(Dispatchers.IO).launch {
+    val coroutineScope = rememberCoroutineScope()
+
+    // **Definición de la función saveSelectedFriends**
+    fun saveSelectedFriends() {
+        println("saveSelectedFriends llamado. userId: $userId")
+        println("Amigos seleccionados: $selectedFriends")
+        coroutineScope.launch {
             try {
-                val response = RetrofitInstance.api.getFriends(FriendsFilterRequest(userId))
+                val friendsIds = selectedFriends.joinToString(",")
+                val saveRequest = SaveFriendsRequest(FriendsList(userId, friendsIds))
+                println("Enviando solicitud para guardar amigos: $saveRequest")
+                val response = RetrofitInstance.api.saveFriends(saveRequest)
+                println("Respuesta recibida: ${response.code()}")
                 if (response.isSuccessful) {
-                    friends = (response.body()?.data?.friends ?: emptyList()) as List<User>
+                    val responseBody = response.body()
+                    println("Cuerpo de la respuesta: $responseBody")
+                    val executeResult = responseBody?.data?.executeResult
+                    val message = responseBody?.data?.message
+                    println("executeResult: $executeResult")
+                    println("Mensaje: $message")
+                    if (executeResult == "OK") {
+                        withContext(Dispatchers.Main) {
+                            showSuccessDialog = true
+                            errorMessage = null
+                            println("Amigos guardados con éxito. showSuccessDialog = $showSuccessDialog")
+                        }
+                    } else {
+                        withContext(Dispatchers.Main) {
+                            errorMessage = message ?: "Error desconocido"
+                            println("Error al guardar amigos: $errorMessage")
+                        }
+                    }
                 } else {
+                    val errorBody = response.errorBody()?.string()
                     withContext(Dispatchers.Main) {
-                        errorMessage = "Error al cargar amigos: ${response.code()}"
+                        errorMessage = "Error al guardar amigos: ${response.code()} - $errorBody"
+                        println("Error en la respuesta: $errorBody")
                     }
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     errorMessage = "Excepción: ${e.message}"
+                    println("Excepción al guardar amigos: ${e.message}")
                 }
             }
         }
     }
 
-    // Cargar amigos al iniciar la pantalla
+
+    // **Función para cargar amigos**
+    fun loadFriends() {
+        coroutineScope.launch {
+            try {
+                val campusId = selectedCampus?.campusID ?: 0
+                val name = nameFilter.trim()
+                val friendsResponse = RetrofitInstance.api.getFriends(
+                    FriendFilterRequest(
+                        FriendsFilter(
+                            loggedUserId = userId,
+                            campusId = campusId,
+                            name = name
+                        )
+                    )
+                )
+                if (friendsResponse.isSuccessful) {
+                    val responseData = friendsResponse.body()?.data
+                    if (responseData?.executeResult == "OK") {
+                        friends = responseData.friends ?: emptyList()
+                        errorMessage = null
+                    } else {
+                        errorMessage = "Error: ${responseData?.message ?: "Desconocido"}"
+                    }
+                } else {
+                    errorMessage = "Error al cargar amigos: ${friendsResponse.code()}"
+                }
+            } catch (e: Exception) {
+                errorMessage = "Error: ${e.message}"
+            }
+        }
+    }
+
+    // Cargar campuses y amigos al iniciar la pantalla
     LaunchedEffect(Unit) {
+        // Cargar campuses
+        try {
+            val campusResponse = RetrofitInstance.api.getCampuses()
+            if (campusResponse.isSuccessful) {
+                campuses = campusResponse.body()?.campuses ?: emptyList()
+                errorMessage = null
+            } else {
+                errorMessage = "Error al cargar campuses: ${campusResponse.code()}"
+            }
+        } catch (e: Exception) {
+            errorMessage = "Error: ${e.message}"
+        }
+
+        // Cargar amigos
         loadFriends()
     }
 
+    // Contenido de la UI
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Tec Milenio - Friends", color = Color.White) },
+                title = { Text("Amigos", color = Color.White) },
                 colors = TopAppBarDefaults.smallTopAppBarColors(containerColor = Color(0xFF0a301d)),
                 navigationIcon = {
-                    IconButton(onClick = { onBack() }) {
-                        Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Volver", tint = Color.White)
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
                     }
                 }
             )
         },
         content = { innerPadding ->
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
-                    .background(Color(0xFFD9F2D0)) // Ajusta el color del fondo según sea necesario
+                    .background(Color(0xFFD9F2D0))
+                    .padding(16.dp)
             ) {
-                if (friends.isEmpty()) {
-                    Text(
-                        text = "No hay amigos",
-                        modifier = Modifier.align(Alignment.Center),
-                        color = Color.Black
+                // Selector de campus
+                ExposedDropdownMenuBox(
+                    expanded = expanded,
+                    onExpandedChange = { expanded = !expanded }
+                ) {
+                    TextField(
+                        value = selectedCampus?.campusName ?: "Seleccionar Campus",
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Campus") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                        modifier = Modifier
+                            .menuAnchor()
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp)
                     )
+                    ExposedDropdownMenu(
+                        expanded = expanded,
+                        onDismissRequest = { expanded = false }
+                    ) {
+                        campuses.forEach { campus ->
+                            DropdownMenuItem(
+                                text = { Text(text = campus.campusName) },
+                                onClick = {
+                                    selectedCampus = campus
+                                    expanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                // Campo de búsqueda por nombre
+                TextField(
+                    value = nameFilter,
+                    onValueChange = { nameFilter = it },
+                    label = { Text("Buscar por nombre") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp)
+                )
+
+                // Botones: Buscar, Save, View Posts
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    Button(onClick = {
+                        // Acción del botón "Buscar"
+                        loadFriends()
+                    }) {
+                        Text("Buscar")
+                    }
+
+                    Button(onClick = {
+                        // Acción del botón "Save"
+                        if (selectedFriends.isEmpty()) {
+                            errorMessage = "No hay amigos seleccionados para guardar"
+                            return@Button
+                        }
+                        saveSelectedFriends() // **Asegúrate de que esta llamada esté presente**
+                    }) {
+                        Text("Save")
+                    }
+
+                    Button(onClick = {
+                        // Acción del botón "View Posts"
+                        if (selectedFriends.isEmpty()) {
+                            errorMessage = "No hay amigos seleccionados para ver posts"
+                            return@Button
+                        }
+                        onViewPosts(selectedFriends.toList())
+                    }) {
+                        Text("View Posts")
+                    }
+                }
+
+                // Lista de amigos
+                if (friends.isEmpty()) {
+                    Text("No hay amigos para mostrar", modifier = Modifier.padding(8.dp))
                 } else {
                     LazyColumn {
                         items(friends) { friend ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
+                            ) {
+                                Checkbox(
+                                    checked = selectedFriends.contains(friend.userId),
+                                    onCheckedChange = { isChecked ->
+                                        selectedFriends = if (isChecked) {
+                                            selectedFriends + friend.userId
+                                        } else {
+                                            selectedFriends - friend.userId
+                                        }
+                                    }
+                                )
+                                Column(modifier = Modifier.padding(start = 8.dp)) {
+                                    Text(
+                                        text = friend.completeName ?: "Nombre desconocido",
+                                        style = MaterialTheme.typography.bodyLarge
+                                    )
+                                    Text(
+                                        text = "Campus: ${friend.campusName ?: "Desconocido"}",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Mensaje de error
+                errorMessage?.let {
+                    Text(text = it, color = Color.Red, modifier = Modifier.padding(top = 8.dp))
+                }
+            }
+        }
+    )
+
+    // Diálogo de éxito
+    if (showSuccessDialog) {
+        AlertDialog(
+            onDismissRequest = { showSuccessDialog = false },
+            title = { Text("Amigos guardados con éxito") },
+            text = { Text("Los amigos seleccionados se han guardado correctamente.") },
+            confirmButton = {
+                TextButton(onClick = { showSuccessDialog = false }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
+}
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ViewPostsScreen(friendIds: List<Int>, onBack: () -> Unit) {
+    var posts by remember { mutableStateOf<List<Post>>(emptyList()) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    // Cargar posts de amigos seleccionados
+    LaunchedEffect(friendIds) {
+        posts = emptyList() // Limpia la lista antes de cargar
+        try {
+            val allPosts = mutableListOf<Post>()
+            for (friendId in friendIds) {
+                val response = RetrofitInstance.api.getPosts(PostFilterRequest(PostFilter(userId = friendId)))
+                if (response.isSuccessful) {
+                    response.body()?.data?.posts?.let { allPosts.addAll(it) }
+                } else {
+                    errorMessage = "Error al cargar posts para el usuario $friendId: ${response.code()}"
+                }
+            }
+            posts = allPosts
+        } catch (e: Exception) {
+            errorMessage = "Error: ${e.message}"
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Posts de Amigos", color = Color.White) },
+                colors = TopAppBarDefaults.smallTopAppBarColors(containerColor = Color(0xFF0a301d)),
+                navigationIcon = {
+                    IconButton(onClick = { onBack() }) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                    }
+                }
+            )
+        },
+        content = { innerPadding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFFD9F2D0))
+                    .padding(innerPadding)
+            ) {
+                if (posts.isEmpty()) {
+                    Text("No hay publicaciones", modifier = Modifier.align(Alignment.CenterHorizontally))
+                } else {
+                    LazyColumn {
+                        items(posts) { post ->
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -574,95 +910,25 @@ fun FriendsScreen(
                             ) {
                                 Column(modifier = Modifier.padding(16.dp)) {
                                     Text(
-                                        text = friend.name,
+                                        text = post.completeName ?: "Nombre desconocido",
                                         style = MaterialTheme.typography.titleMedium
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
+                                    Text(text = post.content ?: "Contenido no disponible")
+                                    Spacer(modifier = Modifier.height(8.dp))
                                     Text(
-                                        text = "Matrícula: ${friend.studentNumber}",
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = "Campus: ${friend.campusName}",
-                                        style = MaterialTheme.typography.bodyMedium
+                                        text = "${post.campusName ?: "Campus desconocido"} - ${post.timeStamp ?: ""}",
+                                        style = MaterialTheme.typography.bodySmall
                                     )
                                 }
                             }
                         }
                     }
                 }
-
-                errorMessage?.let {
-                    Text(
-                        text = it,
-                        color = Color.Red,
-                        modifier = Modifier.padding(16.dp)
-                    )
-                }
             }
         }
     )
 }
-// Función para cargar amigos desde la API
-private fun loadFriends(
-    userId: Int,
-    campusName: String,
-    name: String,
-    onResult: (List<Friend>?, String?) -> Unit
-) {
-    CoroutineScope(Dispatchers.IO).launch {
-        try {
-            // Crear la solicitud con los filtros de campus y nombre
-            val filterRequest = FriendFilterRequest(
-                FriendsFilter(
-                    loggedUserId = userId,
-                    campusId = 0, // No filtramos por ID de campus, sino por nombre
-                    name = name
-                )
-            )
-
-            val response = getRetrofitHack().create(APIService::class.java).getFriends(filterRequest)
-            if (response.isSuccessful) {
-                val friends = response.body()?.data?.friends
-
-                // Filtrar los resultados localmente por el nombre del campus si se ingresó uno
-                val filteredFriends = friends?.filter { friend ->
-                    campusName.isBlank() || friend.campusName.contains(campusName, ignoreCase = true)
-                }
-
-                onResult(filteredFriends, null)
-            } else {
-                onResult(null, response.errorBody()?.string())
-            }
-        } catch (e: Exception) {
-            onResult(null, e.message)
-        }
-    }
-}
-
-// Función para guardar amigos seleccionados
-private fun saveFriends(
-    userId: Int,
-    selectedFriends: Set<Int>,
-    onResult: (Boolean, String?) -> Unit
-) {
-    CoroutineScope(Dispatchers.IO).launch {
-        try {
-            val friendsIds = selectedFriends.joinToString(",")
-            val saveRequest = SaveFriendsRequest(FriendsList(userId, friendsIds))
-            val response = getRetrofitHack().create(APIService::class.java).saveFriends(saveRequest)
-            if (response.isSuccessful) {
-                onResult(response.body()?.data?.executeResult == "OK", null)
-            } else {
-                onResult(false, response.errorBody()?.string())
-            }
-        } catch (e: Exception) {
-            onResult(false, e.message)
-        }
-    }
-}
-
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -697,7 +963,7 @@ fun FeedScreen(
         }
     }
 
-
+    // Carga de publicaciones cuando `userId` cambia
     LaunchedEffect(userId) {
         loadPosts()
     }
@@ -742,11 +1008,17 @@ fun FeedScreen(
                                 elevation = CardDefaults.cardElevation(4.dp)
                             ) {
                                 Column(modifier = Modifier.padding(16.dp)) {
-                                    Text(text = post.completeName ?: "Nombre desconocido", style = MaterialTheme.typography.titleMedium)
+                                    Text(
+                                        text = post.completeName ?: "Nombre desconocido",
+                                        style = MaterialTheme.typography.titleMedium
+                                    )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(text = post.content ?: "Contenido no disponible")
                                     Spacer(modifier = Modifier.height(8.dp))
-                                    Text(text = "${post.campusName ?: "Campus desconocido"} - ${post.timeStamp ?: ""}", style = MaterialTheme.typography.bodySmall)
+                                    Text(
+                                        text = "${post.campusName ?: "Campus desconocido"} - ${post.timeStamp ?: ""}",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
                                 }
                             }
                         }
@@ -760,6 +1032,7 @@ fun FeedScreen(
         }
     )
 
+    // Muestra el diálogo de creación de posts
     if (showCreatePostDialog) {
         CreatePostDialog(
             userId = userId,
@@ -772,7 +1045,6 @@ fun FeedScreen(
     }
 }
 
-
 @Composable
 fun CreatePostDialog(
     userId: Int,
@@ -784,13 +1056,14 @@ fun CreatePostDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("New post") },
+        title = { Text("Nuevo Post") },
         text = {
             Column {
                 TextField(
                     value = postContent,
                     onValueChange = { postContent = it },
-                    label = { Text("Escribe algo...") }
+                    label = { Text("Escribe algo...") },
+                    modifier = Modifier.fillMaxWidth()
                 )
                 errorMessage?.let {
                     Text(text = it, color = Color.Red)
@@ -800,17 +1073,32 @@ fun CreatePostDialog(
         confirmButton = {
             TextButton(onClick = {
                 if (postContent.isNotBlank()) {
-                    // Aquí se hace la llamada para crear el post
+                    // Hacer la llamada para crear el post
                     CoroutineScope(Dispatchers.IO).launch {
                         try {
-                            val request = NewPostRequest(userId = userId, message = postContent)
+                            val request = NewPostRequest(
+                                post = PostData(
+                                    userId = userId,
+                                    message = postContent,
+                                    operationType = "CREATE"
+                                )
+                            )
                             val response = RetrofitInstance.api.createPost(request)
+                            val responseBody = response.body()
 
-                            withContext(Dispatchers.Main) {
-                                if (response.isSuccessful && response.body()?.data?.executeResult == "OK") {
+                            if (response.isSuccessful && responseBody != null && responseBody.data.executeResult == "OK") {
+                                withContext(Dispatchers.Main) {
                                     onPostCreated() // Llama a la función de éxito
-                                } else {
-                                    errorMessage = "Error de respuesta: ${response.code()} - ${response.errorBody()?.string()}"
+                                }
+                            } else if (responseBody != null) {
+                                val errorMessageFromServer = responseBody.data.message
+                                withContext(Dispatchers.Main) {
+                                    errorMessage = "Error del servidor: $errorMessageFromServer"
+                                }
+                            } else {
+                                val errorBody = response.errorBody()?.string()
+                                withContext(Dispatchers.Main) {
+                                    errorMessage = "Error de respuesta: ${response.code()} - ${errorBody ?: "Sin detalles"}"
                                 }
                             }
                         } catch (e: Exception) {
@@ -823,12 +1111,12 @@ fun CreatePostDialog(
                     errorMessage = "El contenido no puede estar vacío"
                 }
             }) {
-                Text("Create")
+                Text("Crear")
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text("Cancelar")
             }
         }
     )

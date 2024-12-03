@@ -8,17 +8,20 @@ import retrofit2.http.GET
 
 interface APIService {
 
-    @POST("UserLogin")
+    @POST("users.aspx/UserLogin")
     suspend fun loginUser(@Body loginData: LoginRequest): Response<LoginResponse>
 
-    @POST("UserUI")
-    suspend fun registerUser(@Body newUser: RegisterRequest): Response<RegisterResponse>
 
-    @POST("Friends")
-    suspend fun getFriends(@Body filterRequest: FriendFilterRequest): Response<FriendResponse>
+    @POST("users.aspx/UserUI")
+    suspend fun registerUser(@Body request: RegisterRequest): Response<RegisterResponse>
 
-    @POST("FriendsUI")
-    suspend fun saveFriends(@Body saveRequest: SaveFriendsRequest): Response<SaveFriendsResponse>
+    @POST("users.aspx/Friends")
+    suspend fun getFriends(@Body request: FriendFilterRequest): Response<FriendResponse>
+
+
+    @POST("users.aspx/FriendsUI")
+    suspend fun saveFriends(@Body request: SaveFriendsRequest): Response<SaveFriendsResponse>
+
 
     @GET("campus.aspx")
     suspend fun getCampuses(): Response<CampusResponse>
@@ -28,7 +31,6 @@ interface APIService {
 
 
     @POST("posts.aspx/PostsUI")
-    suspend fun createPost(@Body request: NewPostRequest): Response<PostResponse>
-
+    suspend fun createPost(@Body request: NewPostRequest): Response<NewPostResponse>
 
 }
